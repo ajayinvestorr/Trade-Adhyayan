@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // This ensures process.env.API_KEY is available during the build and at runtime
-    'process.env': process.env
+    // Stringify the env to ensure it's safely replaced as a constant during build
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY || ''),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
   },
   server: {
     port: 3000,
@@ -14,6 +15,18 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: false,
+    minify: 'esbuild',
+    rollupOptions: {
+      external: [
+        // Prevent Vite from trying to bundle external CDN modules
+        'react',
+        'react-dom',
+        'lucide-react',
+        'recharts',
+        '@google/genai',
+        '@supabase/supabase-js'
+      ]
+    }
   }
 });
