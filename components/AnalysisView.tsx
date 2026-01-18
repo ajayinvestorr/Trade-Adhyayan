@@ -13,7 +13,8 @@ import { db } from '../services/db';
 import { analyzeJournalPatterns } from '../services/ai';
 
 interface StrategyEditorProps {
-  label: React.AbbrHTMLAttributes<HTMLElement> | React.ReactNode;
+  // Fix: Changed React.AbbrHTMLAttributes (which does not exist in standard React types) to React.HTMLAttributes
+  label: React.HTMLAttributes<HTMLElement> | React.ReactNode;
   value: string;
   onChange: (val: string) => void;
   placeholder: string;
