@@ -5,7 +5,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Stringify the env to ensure it's safely replaced as a constant during build
+    // This string replacement happens at build time.
+    // It ensures that libraries like @google/genai can access the API_KEY
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY || ''),
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
   },
@@ -17,16 +18,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
-    rollupOptions: {
-      external: [
-        // Prevent Vite from trying to bundle external CDN modules
-        'react',
-        'react-dom',
-        'lucide-react',
-        'recharts',
-        '@google/genai',
-        '@supabase/supabase-js'
-      ]
-    }
+    // We remove rollupOptions.external to ensure everything is bundled together
+    // for a reliable production build on Vercel.
   }
 });
