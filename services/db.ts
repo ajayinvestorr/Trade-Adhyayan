@@ -22,7 +22,7 @@ class DatabaseService {
   private setStorageItem<T>(key: string, value: T): void {
     try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // --- Mappers ---
@@ -40,7 +40,7 @@ class DatabaseService {
       id: dbUser.id,
       email: dbUser.email,
       name: dbUser.name,
-      photoURL: dbUser.photo_url, 
+      photoURL: dbUser.photo_url,
       bio: dbUser.bio,
       website: dbUser.website,
       password: dbUser.password,
@@ -126,8 +126,8 @@ class DatabaseService {
   }
 
   // --- Session ---
-  public getSession(): User | null { 
-    const session = this.getStorageItem<User | null>(DB_SESSION_KEY, null); 
+  public getSession(): User | null {
+    const session = this.getStorageItem<User | null>(DB_SESSION_KEY, null);
     if (session) {
       // Ensure session user also has active sub
       session.subscription = {
@@ -139,13 +139,13 @@ class DatabaseService {
     }
     return session;
   }
-  
-  public setSession(user: User): void { 
-    this.setStorageItem(DB_SESSION_KEY, user); 
+
+  public setSession(user: User): void {
+    this.setStorageItem(DB_SESSION_KEY, user);
   }
-  
-  public clearSession(): void { 
-    localStorage.removeItem(DB_SESSION_KEY); 
+
+  public clearSession(): void {
+    localStorage.removeItem(DB_SESSION_KEY);
   }
 
   // --- Users ---
@@ -162,7 +162,7 @@ class DatabaseService {
         console.error("Supabase Login Query Error:", error);
         throw error;
       }
-      
+
       if (!data) {
         // Fallback check in local users
         const localUsers = this.getStorageItem<User[]>(LOCAL_USERS_KEY, []);
@@ -174,12 +174,21 @@ class DatabaseService {
         }
         throw new Error('Invalid email or password');
       }
-      
+
       const user = this.mapUser(data);
       this.setSession(user);
       return user;
     } catch (err: any) {
       console.error("Login Error:", err);
+      // Fallback check in local users
+      const localUsers = this.getStorageItem<User[]>(LOCAL_USERS_KEY, []);
+      const localUser = localUsers.find(u => u.email === email && u.password === password);
+      if (localUser) {
+        console.log("Found user in local storage fallback");
+        const user = this.mapUser(this.mapToDbUser(localUser));
+        this.setSession(user);
+        return user;
+      }
       const message = err.message || (typeof err === 'string' ? err : 'Authentication failed');
       throw new Error(message);
     }
@@ -187,7 +196,7 @@ class DatabaseService {
 
   public async registerUser(user: User): Promise<User> {
     const newUser = { ...user, id: crypto.randomUUID() };
-    
+
     try {
       const { data: existing, error: checkError } = await supabase
         .from('users')
@@ -232,7 +241,7 @@ class DatabaseService {
       return (data || []).map(t => this.mapTrade(t));
     } catch (err) {
       const allLocal = this.getStorageItem<Trade[]>(LOCAL_TRADES_KEY, []);
-      return allLocal.filter(t => t.userId === userId).sort((a,b) => 
+      return allLocal.filter(t => t.userId === userId).sort((a, b) =>
         new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime()
       );
     }
@@ -244,18 +253,48 @@ class DatabaseService {
       const { error } = await supabase.from('trades').insert([dbTrade]);
       if (error) throw error;
     } catch (err) {
+      console.error("Failed to add trade to Supabase, saving locally:", err);
       const allLocal = this.getStorageItem<Trade[]>(LOCAL_TRADES_KEY, []);
       allLocal.push(trade);
       this.setStorageItem(LOCAL_TRADES_KEY, allLocal);
     }
   }
 
+  public async syncLocalTradesToSupabase(): Promise<{ success: number, failed: number }> {
+    const user = this.getSession();
+    if (!user) return { success: 0, failed: 0 };
+
+    const localTrades = this.getStorageItem<Trade[]>(LOCAL_TRADES_KEY, []);
+    if (localTrades.length === 0) return { success: 0, failed: 0 };
+
+    console.log(`Syncing ${localTrades.length} local trades to Supabase...`);
+    let successCount = 0;
+    let failedCount = 0;
+    const remainingLocal: Trade[] = [];
+
+    for (const trade of localTrades) {
+      try {
+        const dbTrade = this.mapToDbTrade({ ...trade, userId: user.id });
+        const { error } = await supabase.from('trades').insert([dbTrade]);
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error("Failed to sync trade:", trade.id, err);
+        failedCount++;
+        remainingLocal.push(trade);
+      }
+    }
+
+    this.setStorageItem(LOCAL_TRADES_KEY, remainingLocal);
+    return { success: successCount, failed: failedCount };
+  }
+
   public async importTrades(trades: Trade[]): Promise<void> {
     const user = this.getSession();
     if (!user) return;
-    
+
     try {
-      const dbTrades = trades.map(t => this.mapToDbTrade({...t, userId: user.id}));
+      const dbTrades = trades.map(t => this.mapToDbTrade({ ...t, userId: user.id }));
       const { error } = await supabase.from('trades').insert(dbTrades);
       if (error) throw error;
     } catch (err) {
@@ -286,7 +325,7 @@ class DatabaseService {
         ]);
       }
       return data.map(r => ({
-          id: r.id, userId: r.user_id, text: r.text, streak: r.streak, committedToday: r.committed_today, isActive: r.is_active
+        id: r.id, userId: r.user_id, text: r.text, streak: r.streak, committedToday: r.committed_today, isActive: r.is_active
       }));
     } catch (err) {
       return this.getStorageItem(`rules_${userId}`, []);
@@ -298,10 +337,10 @@ class DatabaseService {
     try {
       await supabase.from('rules').delete().eq('user_id', userId);
       const dbRules = rules.map(r => ({
-          id: r.id, user_id: userId, text: r.text, streak: r.streak, committed_today: r.committedToday, is_active: r.isActive
+        id: r.id, user_id: userId, text: r.text, streak: r.streak, committed_today: r.committedToday, is_active: r.isActive
       }));
       await supabase.from('rules').insert(dbRules);
-    } catch (err) {}
+    } catch (err) { }
   }
 
   public async getStrategiesForUser(userId: string): Promise<Strategy[]> {
@@ -309,9 +348,9 @@ class DatabaseService {
       const { data, error } = await supabase.from('strategies').select('*').eq('user_id', userId);
       if (error) throw error;
       return (data || []).map(s => ({
-          id: s.id, userId: s.user_id, name: s.name, description: s.description, timeframe: s.timeframe,
-          entryRules: s.entry_rules, exitRules: s.exit_rules, stopLossLogic: s.stop_loss_logic,
-          takeProfitLogic: s.take_profit_logic, riskManagement: s.risk_management, createdAt: s.created_at
+        id: s.id, userId: s.user_id, name: s.name, description: s.description, timeframe: s.timeframe,
+        entryRules: s.entry_rules, exitRules: s.exit_rules, stopLossLogic: s.stop_loss_logic,
+        takeProfitLogic: s.take_profit_logic, riskManagement: s.risk_management, createdAt: s.created_at
       }));
     } catch (err) {
       return this.getStorageItem(`strats_${userId}`, []);
@@ -324,44 +363,44 @@ class DatabaseService {
     this.setStorageItem(`strats_${userId}`, [...current, strategy]);
     try {
       const dbStrat = {
-          id: strategy.id, user_id: strategy.userId, name: strategy.name, description: strategy.description,
-          timeframe: strategy.timeframe, entry_rules: strategy.entryRules, exit_rules: strategy.exitRules,
-          stop_loss_logic: strategy.stopLossLogic, take_profit_logic: strategy.takeProfitLogic,
-          risk_management: strategy.riskManagement
+        id: strategy.id, user_id: strategy.userId, name: strategy.name, description: strategy.description,
+        timeframe: strategy.timeframe, entry_rules: strategy.entryRules, exit_rules: strategy.exitRules,
+        stop_loss_logic: strategy.stopLossLogic, take_profit_logic: strategy.takeProfitLogic,
+        risk_management: strategy.riskManagement
       };
       await supabase.from('strategies').insert([dbStrat]);
-    } catch (err) {}
+    } catch (err) { }
   }
 
   public async updateStrategy(strategy: Strategy): Promise<void> {
     const userId = strategy.userId;
     const current = await this.getStrategiesForUser(userId);
     this.setStorageItem(`strats_${userId}`, current.map(s => s.id === strategy.id ? strategy : s));
-    
+
     try {
       const dbStrat = {
-          name: strategy.name, 
-          description: strategy.description,
-          timeframe: strategy.timeframe, 
-          entry_rules: strategy.entryRules, 
-          exit_rules: strategy.exitRules,
-          stop_loss_logic: strategy.stopLossLogic, 
-          take_profit_logic: strategy.takeProfitLogic,
-          risk_management: strategy.riskManagement
+        name: strategy.name,
+        description: strategy.description,
+        timeframe: strategy.timeframe,
+        entry_rules: strategy.entryRules,
+        exit_rules: strategy.exitRules,
+        stop_loss_logic: strategy.stopLossLogic,
+        take_profit_logic: strategy.takeProfitLogic,
+        risk_management: strategy.riskManagement
       };
       await supabase.from('strategies').update(dbStrat).eq('id', strategy.id);
-    } catch (err) {}
+    } catch (err) { }
   }
 
   public async deleteStrategy(strategyId: string): Promise<void> {
     const user = this.getSession();
     if (user) {
-        const current = await this.getStrategiesForUser(user.id);
-        this.setStorageItem(`strats_${user.id}`, current.filter(s => s.id !== strategyId));
+      const current = await this.getStrategiesForUser(user.id);
+      this.setStorageItem(`strats_${user.id}`, current.filter(s => s.id !== strategyId));
     }
     try {
       await supabase.from('strategies').delete().eq('id', strategyId);
-    } catch (err) {}
+    } catch (err) { }
   }
 
   public async subscribeUser(userId: string, plan: 'monthly' | 'yearly'): Promise<User> {
@@ -369,7 +408,7 @@ class DatabaseService {
     const expiryDate = new Date();
     if (plan === 'monthly') expiryDate.setMonth(expiryDate.getMonth() + 1);
     else expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-    
+
     const subscription: UserSubscription = {
       plan,
       startDate,
@@ -414,7 +453,7 @@ class DatabaseService {
     if (!user) return;
     if (data.trades && data.trades.length > 0) {
       const allLocal = this.getStorageItem<Trade[]>(LOCAL_TRADES_KEY, []);
-      const merged = [...allLocal, ...data.trades.map((t:any) => ({...t, userId: user.id, id: crypto.randomUUID()}))];
+      const merged = [...allLocal, ...data.trades.map((t: any) => ({ ...t, userId: user.id, id: crypto.randomUUID() }))];
       this.setStorageItem(LOCAL_TRADES_KEY, merged);
     }
   }
