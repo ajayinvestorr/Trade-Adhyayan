@@ -18,6 +18,7 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
+    chunkSizeWarningLimit: 1600,
     // We remove rollupOptions.external to ensure everything is bundled together
     // for a reliable production build on Vercel.
   }

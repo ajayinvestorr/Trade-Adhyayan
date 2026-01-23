@@ -1,8 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { Trade } from '../types';
 
-// Initializing the GenAI client with named parameter
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initializing the GenAI client with correct SDK pattern
+const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+const genAI = new GoogleGenAI(apiKey);
 
 /**
  * Sends trade history to Gemini to generate coaching insights.
@@ -10,6 +11,11 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 export const analyzeJournalPatterns = async (trades: Trade[]): Promise<string> => {
   if (!trades || trades.length < 3) {
     return "### 📊 More Data Required\n\nPlease log at least 3-5 completed trades to unlock AI Coaching. I need to observe your execution patterns and emotional responses over multiple data points.";
+  }
+
+  // Check if API key is missing
+  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+    return "### 🔑 AI Coach Offline\n\nTo enable the AI Coach, please add your `VITE_GEMINI_API_KEY` to the `.env` file and restart the development server.";
   }
 
   const tradeContext = trades.slice(0, 50).map(t => ({
@@ -40,17 +46,10 @@ export const analyzeJournalPatterns = async (trades: Trade[]): Promise<string> =
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: {
-        temperature: 0.8,
-        topP: 0.95,
-        thinkingConfig: { thinkingBudget: 2000 }
-      }
-    });
-
-    return response.text || "Coach is currently analyzing the tape. Please check back shortly.";
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text() || "Coach is currently analyzing the tape. Please check back shortly.";
   } catch (error) {
     console.error("Gemini AI Analysis Error:", error);
     return "### ⚠️ Analysis Interrupted\n\nI was unable to complete the analysis. This usually happens due to a network timeout or API quota limit. Please try again in 5 minutes.";
